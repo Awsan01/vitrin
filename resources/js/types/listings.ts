@@ -133,7 +133,7 @@ export type CreditTransaction = {
     id: number;
     amount: number;
     balance_after: number;
-    reason: 'signup' | 'generation' | 'refund' | 'grant' | string;
+    reason: string;
     description: string | null;
     listing_id: string | null;
     created_at: string | null;

@@ -1,0 +1,114 @@
+name: deploy
+
+# Deploys to Hostinger shared hosting after the tests pass on main, or when
+# started by hand from the Actions tab. Everything is built here (Composer
+# packages and the frontend), so the server only needs PHP, SSH and rsync.
+#
+# Repository settings -> Secrets and variables -> Actions:
+#   Secrets:   HOSTINGER_SSH_HOST, HOSTINGER_SSH_PORT (usually 65002),
+#              HOSTINGER_SSH_USER, HOSTINGER_SSH_KEY (private key)
+#   Variables: HOSTINGER_APP_PATH, e.g. domains/example.com/vitrin
+#              HOSTINGER_PHP (optional, the PHP binary on the server)
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      vars.HOSTINGER_APP_PATH != '' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Install PHP dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+
+      - name: Build frontend
+        # The Wayfinder Vite plugin boots the app to generate route helpers,
+        # so a throwaway .env is needed during the build only.
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm run build
+          rm .env
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload files
+        env:
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          APP_PATH: ${{ vars.HOSTINGER_APP_PATH }}
+        # --delete removes files that no longer exist in the repo, while the
+        # protect rules keep the server's .env, uploads and logs untouched.
+        run: |
+          rsync -az --delete \
+            --exclude='.git' --exclude='.github' --exclude='node_modules' \
+            --exclude='tests' --exclude='.env' --exclude='database/database.sqlite' \
+            --filter='P .env' \
+            --filter='P storage/**' \
+            --filter='P bootstrap/cache/*.php' \
+            --filter='P database/database.sqlite' \
+            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT" \
+            ./ "$SSH_USER@$SSH_HOST:$APP_PATH/"
+
+      - name: Migrate and refresh caches
+        env:
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          APP_PATH: ${{ vars.HOSTINGER_APP_PATH }}
+          PHP_BIN: ${{ vars.HOSTINGER_PHP || 'php' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s <<EOF
+          set -e
+          cd "$APP_PATH"
+          if [ ! -f .env ]; then
+            echo "No .env on the server yet. Create it (see README, 'First deploy'), then run this workflow again."
+            exit 0
+          fi
+          $PHP_BIN artisan migrate --force
+          $PHP_BIN artisan optimize
+          $PHP_BIN artisan queue:restart
+          EOF

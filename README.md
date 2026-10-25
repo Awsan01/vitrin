@@ -2,7 +2,7 @@
 
 Marketplace-ready product listings from one photo. A seller uploads a product photo, picks where they sell (Trendyol, Hepsiburada, Amazon, noon, Etsy or their own store) and the languages they need (Turkish, Arabic, English). Vitrin writes the title, bullet points, description, keywords and category for each marketplace, sized to its rules, and creates new photos of the product: white background, lifestyle, in use, close-up and new angle.
 
-Built with Laravel 13, React 19 (Inertia), the Laravel AI SDK and Gemini, and made to run on Hostinger shared hosting.
+Built with Laravel 13, React 19 (Inertia), the Laravel AI SDK and Gemini.
 
 ![Landing page](docs/screenshots/landing.png)
 

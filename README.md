@@ -6,12 +6,12 @@ Built with Laravel 13, React 19 (Inertia), the Laravel AI SDK and Gemini, and ma
 
 ![Landing page](docs/screenshots/landing.png)
 
-| Results | Arabic, right to left |
-| --- | --- |
+| Results                                       | Arabic, right to left                                  |
+| --------------------------------------------- | ------------------------------------------------------ |
 | ![Results page](docs/screenshots/results.png) | ![Arabic listing](docs/screenshots/results-arabic.png) |
 
-| New listing | Listings |
-| --- | --- |
+| New listing                                           | Listings                                     |
+| ----------------------------------------------------- | -------------------------------------------- |
 | ![New listing form](docs/screenshots/new-listing.png) | ![Dashboard](docs/screenshots/dashboard.png) |
 
 ## What it does
@@ -74,14 +74,14 @@ One Gemini key covers both text and images. Image generation may need a billing-
 
 ## Configuration
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `VITRIN_TEXT_PROVIDER` / `VITRIN_TEXT_MODEL` | `gemini` / provider default | Writes the listings and analyzes the photo |
-| `VITRIN_IMAGE_PROVIDER` / `VITRIN_IMAGE_MODEL` | `gemini` / provider default | Creates the photos |
-| `VITRIN_IMAGE_QUALITY` | `medium` | `low`, `medium` or `high` (about 1K, 2K or 4K on Gemini) |
-| `VITRIN_SIGNUP_CREDITS` | `15` | Free credits for new accounts |
-| `VITRIN_COPY_COST` / `VITRIN_PHOTO_COST` | `1` / `2` | Credits per listing and per photo |
-| `DB_QUEUE_RETRY_AFTER` | `300` | Must stay longer than the slowest job (180 seconds) |
+| Variable                                       | Default                     | What it does                                             |
+| ---------------------------------------------- | --------------------------- | -------------------------------------------------------- |
+| `VITRIN_TEXT_PROVIDER` / `VITRIN_TEXT_MODEL`   | `gemini` / provider default | Writes the listings and analyzes the photo               |
+| `VITRIN_IMAGE_PROVIDER` / `VITRIN_IMAGE_MODEL` | `gemini` / provider default | Creates the photos                                       |
+| `VITRIN_IMAGE_QUALITY`                         | `medium`                    | `low`, `medium` or `high` (about 1K, 2K or 4K on Gemini) |
+| `VITRIN_SIGNUP_CREDITS`                        | `15`                        | Free credits for new accounts                            |
+| `VITRIN_COPY_COST` / `VITRIN_PHOTO_COST`       | `1` / `2`                   | Credits per listing and per photo                        |
+| `DB_QUEUE_RETRY_AFTER`                         | `300`                       | Must stay longer than the slowest job (180 seconds)      |
 
 Marketplace rules (title limits, bullet counts, keyword limits and prompt rules) live in `config/vitrin.php`. Marketplaces change their policies, so re-check them from time to time; the file notes where each rule came from.
 
@@ -125,47 +125,48 @@ From then on, every push to `main` that passes the tests is deployed by `.github
 1. Run the deploy workflow once to upload the code.
 2. On the server, create the environment file:
 
-   ```bash
-   cd ~/domains/example.com/vitrin
-   cp .env.example .env
-   nano .env
-   ```
+    ```bash
+    cd ~/domains/example.com/vitrin
+    cp .env.example .env
+    nano .env
+    ```
 
-   Set at least the following:
+    Set at least the following:
 
-   ```dotenv
-   APP_ENV=production
-   APP_DEBUG=false
-   APP_URL=https://example.com
-   DB_CONNECTION=mysql
-   DB_HOST=localhost
-   DB_DATABASE=u123456789_vitrin
-   DB_USERNAME=u123456789_vitrin
-   DB_PASSWORD=...
-   GEMINI_API_KEY=...
-   MAIL_MAILER=smtp
-   MAIL_SCHEME=smtps
-   MAIL_HOST=smtp.hostinger.com
-   MAIL_PORT=465
-   MAIL_USERNAME=no-reply@example.com
-   MAIL_PASSWORD=...
-   MAIL_FROM_ADDRESS=no-reply@example.com
-   ```
+    ```dotenv
+    APP_ENV=production
+    APP_DEBUG=false
+    APP_URL=https://example.com
+    DB_CONNECTION=mysql
+    DB_HOST=localhost
+    DB_DATABASE=u123456789_vitrin
+    DB_USERNAME=u123456789_vitrin
+    DB_PASSWORD=...
+    GEMINI_API_KEY=...
+    MAIL_MAILER=smtp
+    MAIL_SCHEME=smtps
+    MAIL_HOST=smtp.hostinger.com
+    MAIL_PORT=465
+    MAIL_USERNAME=no-reply@example.com
+    MAIL_PASSWORD=...
+    MAIL_FROM_ADDRESS=no-reply@example.com
+    ```
 
-   Then run `php artisan key:generate` and `php artisan migrate --force`.
+    Then run `php artisan key:generate` and `php artisan migrate --force`.
+
 3. Point the domain at Laravel's `public` folder:
 
-   ```bash
-   cd ~/domains/example.com
-   mv public_html public_html_old
-   ln -s vitrin/public public_html
-   ```
+    ```bash
+    cd ~/domains/example.com
+    mv public_html public_html_old
+    ln -s vitrin/public public_html
+    ```
 
 4. Add the cron job: in hPanel, go to Advanced, Cron Jobs, Custom, and run this every minute:
 
-   ```
-   cd /home/u123456789/domains/example.com/vitrin && php artisan schedule:run >> /dev/null 2>&1
-   ```
+    ```
+    cd /home/u123456789/domains/example.com/vitrin && php artisan schedule:run >> /dev/null 2>&1
+    ```
 
 5. Turn on the free SSL certificate for the domain under Security, SSL.
 

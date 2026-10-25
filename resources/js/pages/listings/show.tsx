@@ -1,5 +1,10 @@
 import { Head, router, usePoll } from '@inertiajs/react';
-import { FileSpreadsheet, RefreshCw, Trash2, TriangleAlert } from 'lucide-react';
+import {
+    FileSpreadsheet,
+    RefreshCw,
+    Trash2,
+    TriangleAlert,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CopyPanel } from '@/components/listing/copy-panel';
 import { FactsPanel } from '@/components/listing/facts-panel';

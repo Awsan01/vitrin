@@ -8,11 +8,12 @@ use App\Http\Controllers\ListingPhotoController;
 use App\Http\Controllers\ListingPhotosArchiveController;
 use App\Http\Controllers\ListingRetryController;
 use App\Http\Controllers\ListingSourceController;
+use App\Services\ListingGenerator;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome', [
     'signupCredits' => (int) config('vitrin.credits.signup'),
-    'costs' => ['copy' => (int) config('vitrin.credits.copy'), 'photo' => (int) config('vitrin.credits.photo')],
+    'costs' => ListingGenerator::prices(),
 ])->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {

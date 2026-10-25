@@ -127,12 +127,13 @@ class Listing extends Model
     }
 
     /**
-     * Remove the listing's files along with the record.
+     * Remove the listing's files along with the record. The record goes
+     * first, so a failed delete never leaves a listing without its files.
      */
     public function deleteWithFiles(): void
     {
-        Storage::disk(self::disk())->deleteDirectory($this->storageDirectory());
-
         $this->delete();
+
+        Storage::disk(self::disk())->deleteDirectory($this->storageDirectory());
     }
 }

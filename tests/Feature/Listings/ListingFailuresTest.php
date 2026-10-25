@@ -13,6 +13,7 @@ use App\Jobs\WriteListingCopy;
 use App\Models\Listing;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -62,6 +63,20 @@ class ListingFailuresTest extends TestCase
 
         $this->assertSame(7, $listing->user->fresh()->credits);
         $this->assertSame("The AI service didn't return a photo. 2 credits were refunded.", $photo->fresh()->error);
+    }
+
+    public function test_a_job_failing_after_its_listing_was_deleted_does_nothing(): void
+    {
+        Storage::fake('local');
+        $listing = $this->makeListing();
+        $photo = $listing->photos()->firstOrFail();
+        $user = $listing->user;
+
+        $listing->deleteWithFiles();
+
+        (new GenerateListingPhoto($photo))->failed(new RuntimeException('timeout'));
+
+        $this->assertSame(5, $user->fresh()->credits);
     }
 
     public function test_a_failed_analysis_fails_the_listing_and_refunds_unfinished_items(): void

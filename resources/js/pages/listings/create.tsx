@@ -441,8 +441,8 @@ export default function CreateListing({
                         {!canAfford && (
                             <p className="mt-2 text-sm text-destructive-foreground">
                                 This needs{' '}
-                                {plural(total - balance, 'more credit')}.
-                                Remove an option or{' '}
+                                {plural(total - balance, 'more credit')}. Remove
+                                an option or{' '}
                                 <Link
                                     href={creditsIndex()}
                                     className="underline underline-offset-4"

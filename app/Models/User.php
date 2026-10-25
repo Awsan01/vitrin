@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 /**
@@ -33,6 +34,19 @@ class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    protected static function booted(): void
+    {
+        // The database cascades listings away with the account, but their
+        // photos live on disk, so remove those too.
+        static::deleting(function (User $user) {
+            $disk = Storage::disk(Listing::disk());
+
+            $user->listings()->select('id')->lazyById()->each(
+                fn (Listing $listing) => $disk->deleteDirectory($listing->storageDirectory()),
+            );
+        });
+    }
 
     /**
      * Get the attributes that should be cast.

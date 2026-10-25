@@ -54,6 +54,10 @@ return [
         'min_dimension' => 300,
         // Uploads are resized so the long edge is at most this many pixels.
         'max_dimension' => 2048,
+        // Decoding takes about 4 bytes per pixel, so this caps the memory one
+        // upload can use (50 MP is about 200 MB) and stops "image bombs":
+        // tiny files that claim enormous dimensions.
+        'max_megapixels' => 50,
     ],
 
     /*

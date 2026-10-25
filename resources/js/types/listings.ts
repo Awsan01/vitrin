@@ -133,7 +133,8 @@ export type CreditTransaction = {
     id: number;
     amount: number;
     balance_after: number;
-    reason: 'signup' | 'generation' | 'refund' | 'grant' | string;
+    /** signup, generation, refund or grant today (App\Models\CreditTransaction); new reasons may follow. */
+    reason: string;
     description: string | null;
     listing_id: string | null;
     created_at: string | null;

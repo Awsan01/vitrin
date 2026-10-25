@@ -53,6 +53,7 @@ class ListingFactory extends Factory
             'product_type' => "men's short-sleeve linen shirt",
             'category_path' => 'Clothing > Men > Shirts',
             'brand' => null,
+            'model' => null,
             'colors' => ['sand beige'],
             'materials' => ['linen'],
             'key_features' => ['short sleeves', 'button-down front', 'chest pocket', 'relaxed fit'],

@@ -91,5 +91,19 @@ class FortifyServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($throttleKey);
         });
 
+        // Fortify doesn't throttle these forms itself. Applied to every Fortify
+        // route via config/fortify.php; routes not listed here are unlimited.
+        // Sign-ups are capped because each account starts with free credits
+        // that pay for real AI calls.
+        RateLimiter::for('fortify-forms', function (Request $request) {
+            $ip = (string) $request->ip();
+
+            return match ($request->route()?->getName()) {
+                'register.store' => Limit::perHour(10)->by('register|'.$ip),
+                'password.email', 'password.update' => Limit::perMinute(5)->by('password-reset|'.$ip),
+                'password.confirm.store' => Limit::perMinute(5)->by('confirm|'.($request->user()->id ?? $ip)),
+                default => Limit::none(),
+            };
+        });
     }
 }

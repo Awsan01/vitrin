@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\CreditTransaction;
+use App\Services\ListingGenerator;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -32,10 +33,7 @@ class CreditsController extends Controller
         return Inertia::render('settings/credits', [
             'balance' => $request->user()->credits,
             'transactions' => $transactions,
-            'costs' => [
-                'copy' => config('vitrin.credits.copy'),
-                'photo' => config('vitrin.credits.photo'),
-            ],
+            'costs' => ListingGenerator::prices(),
         ]);
     }
 }

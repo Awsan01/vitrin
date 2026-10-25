@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
+use ZipArchive;
 
 class ManageListingTest extends TestCase
 {
@@ -96,10 +97,41 @@ class ManageListingTest extends TestCase
         $this->actingAs($intruder)->get(route('listings.source', $this->listing))->assertForbidden();
         $this->actingAs($intruder)->get(route('listings.export', $this->listing))->assertForbidden();
         $this->actingAs($intruder)->get(route('listings.photos.show', [$this->listing, $photo]))->assertForbidden();
+        $this->actingAs($intruder)->get(route('listings.photos.download', $this->listing))->assertForbidden();
         $this->actingAs($intruder)->post(route('listings.copies.regenerate', [$this->listing, $copy]))->assertForbidden();
+        $this->actingAs($intruder)->post(route('listings.photos.regenerate', [$this->listing, $photo]))->assertForbidden();
+        $this->actingAs($intruder)->post(route('listings.retry', $this->listing))->assertForbidden();
         $this->actingAs($intruder)->delete(route('listings.destroy', $this->listing))->assertForbidden();
 
         $this->assertModelExists($this->listing);
+        $this->assertSame(10, $intruder->fresh()->credits);
+    }
+
+    public function test_the_photo_zip_holds_the_original_and_every_finished_photo(): void
+    {
+        $response = $this->actingAs($this->owner)
+            ->get(route('listings.photos.download', $this->listing))
+            ->assertOk();
+
+        $path = $response->baseResponse->getFile()->getPathname();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($path));
+
+        $this->assertSame(2, $zip->numFiles);
+        $this->assertSame('source-bytes', $zip->getFromName('linen-shirt-original.jpg'));
+        $this->assertSame('photo-bytes', $zip->getFromName('linen-shirt-white-background.png'));
+
+        $zip->close();
+        unlink($path);
+    }
+
+    public function test_the_photo_zip_is_not_found_when_the_files_are_gone(): void
+    {
+        Storage::disk('local')->deleteDirectory($this->listing->storageDirectory());
+
+        $this->actingAs($this->owner)
+            ->get(route('listings.photos.download', $this->listing))
+            ->assertNotFound();
     }
 
     public function test_photos_are_scoped_to_their_listing(): void

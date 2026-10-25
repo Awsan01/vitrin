@@ -6,6 +6,7 @@ use App\Enums\Language;
 use App\Enums\Marketplace;
 use App\Enums\PhotoStyle;
 use App\Exceptions\InsufficientCreditsException;
+use App\Exceptions\UnsupportedImageException;
 use App\Http\Requests\StoreListingRequest;
 use App\Http\Resources\ListingResource;
 use App\Models\Listing;
@@ -26,7 +27,7 @@ class ListingController extends Controller
             'marketplaces' => Marketplace::options(),
             'languages' => Language::options(),
             'photoStyles' => PhotoStyle::options(),
-            'costs' => self::costs(),
+            'costs' => ListingGenerator::prices(),
             'uploadLimits' => [
                 'max_mb' => (int) floor(config('vitrin.uploads.max_kb') / 1024),
                 'min_dimension' => config('vitrin.uploads.min_dimension'),
@@ -40,6 +41,10 @@ class ListingController extends Controller
             $listing = $generator->start($request->user(), $request->toNewListing());
         } catch (InsufficientCreditsException $e) {
             return back()->withErrors(['credits' => $e->getMessage()]);
+        } catch (UnsupportedImageException $e) {
+            // A file can pass validation and still fail to decode (a truncated
+            // JPEG, for example). Nothing has been charged at this point.
+            return back()->withErrors(['photo' => $e->getMessage()]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Generating your listing. This usually takes under a minute.']);
@@ -57,7 +62,7 @@ class ListingController extends Controller
 
         return Inertia::render('listings/show', [
             'listing' => (new ListingResource($listing))->resolve($request),
-            'costs' => self::costs(),
+            'costs' => ListingGenerator::prices(),
         ]);
     }
 
@@ -68,16 +73,5 @@ class ListingController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Listing deleted.']);
 
         return to_route('dashboard');
-    }
-
-    /**
-     * @return array{copy: int, photo: int}
-     */
-    public static function costs(): array
-    {
-        return [
-            'copy' => config('vitrin.credits.copy'),
-            'photo' => config('vitrin.credits.photo'),
-        ];
     }
 }

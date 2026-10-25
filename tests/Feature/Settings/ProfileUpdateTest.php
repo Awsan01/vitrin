@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Models\Listing;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ProfileUpdateTest extends TestCase
@@ -77,6 +79,29 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertGuest();
         $this->assertNull($user->fresh());
+    }
+
+    public function test_deleting_an_account_removes_its_photos_from_disk()
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $listings = Listing::factory()->count(2)->for($user)->create();
+        $otherListing = Listing::factory()->create();
+
+        foreach ([...$listings, $otherListing] as $listing) {
+            Storage::disk('local')->put($listing->source_path, 'photo');
+        }
+
+        $this->actingAs($user)
+            ->delete(route('profile.destroy'), ['password' => 'password'])
+            ->assertSessionHasNoErrors();
+
+        foreach ($listings as $listing) {
+            Storage::disk('local')->assertMissing($listing->storageDirectory());
+            $this->assertModelMissing($listing);
+        }
+
+        Storage::disk('local')->assertExists($otherListing->source_path);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()

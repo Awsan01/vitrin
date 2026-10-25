@@ -77,6 +77,15 @@ class ListingCopyNormalizerTest extends TestCase
         $this->assertStringContainsString('Only 2 of 5 bullet points', implode(' ', $result['warnings']));
     }
 
+    public function test_numbers_at_the_start_of_a_bullet_are_kept_unless_they_are_list_markers(): void
+    {
+        $result = ListingCopyNormalizer::normalize($this->raw([
+            'bullets' => ['2.4G wireless and two Bluetooth channels', '3) DPI button', '1600 DPI sensor'],
+        ]), Marketplace::Trendyol);
+
+        $this->assertSame(['2.4G wireless and two Bluetooth channels', 'DPI button', '1600 DPI sensor'], $result['bullets']);
+    }
+
     public function test_highlights_are_dropped_on_marketplaces_without_them(): void
     {
         $result = ListingCopyNormalizer::normalize($this->raw(['highlight' => 'Something']), Marketplace::Noon);

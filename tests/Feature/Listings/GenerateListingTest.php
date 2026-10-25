@@ -6,9 +6,11 @@ use App\Ai\Agents\ListingWriter;
 use App\Ai\Agents\ProductAnalyst;
 use App\Enums\GenerationStatus;
 use App\Enums\ListingStatus;
+use App\Exceptions\UnsupportedImageException;
 use App\Models\CreditTransaction;
 use App\Models\Listing;
 use App\Models\User;
+use App\Services\ListingGenerator;
 use Database\Factories\ListingFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -80,6 +82,43 @@ class GenerateListingTest extends TestCase
                 'languages' => ['en'],
             ])
             ->assertSessionHasErrors('photo');
+    }
+
+    public function test_photos_with_too_many_pixels_are_rejected(): void
+    {
+        config(['vitrin.uploads.max_megapixels' => 1]);
+        $user = User::factory()->withCredits(10)->create();
+
+        $this->actingAs($user)
+            ->post(route('listings.store'), [
+                'photo' => UploadedFile::fake()->image('huge.jpg', 1200, 1000),
+                'marketplaces' => ['amazon'],
+                'languages' => ['en'],
+            ])
+            ->assertSessionHasErrors(['photo' => 'The photo should be at most 1 megapixels.']);
+
+        $this->assertDatabaseCount('listings', 0);
+        $this->assertSame(10, $user->fresh()->credits);
+    }
+
+    public function test_a_photo_that_cannot_be_decoded_is_a_form_error_not_a_crash(): void
+    {
+        $user = User::factory()->withCredits(10)->create();
+
+        $this->mock(ListingGenerator::class)
+            ->shouldReceive('start')
+            ->andThrow(new UnsupportedImageException('The uploaded file is not a readable JPEG, PNG or WebP image.'));
+
+        $this->actingAs($user)
+            ->post(route('listings.store'), [
+                'photo' => UploadedFile::fake()->image('broken.jpg', 800, 800),
+                'marketplaces' => ['amazon'],
+                'languages' => ['en'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors(['photo' => 'The uploaded file is not a readable JPEG, PNG or WebP image.']);
+
+        $this->assertSame(10, $user->fresh()->credits);
     }
 
     public function test_it_refuses_when_the_user_cannot_afford_the_generation(): void

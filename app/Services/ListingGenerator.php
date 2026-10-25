@@ -33,11 +33,26 @@ class ListingGenerator
     public function __construct(protected CreditLedger $credits) {}
 
     /**
+     * Credits per listing and per photo, as shown to sellers.
+     *
+     * @return array{copy: int, photo: int}
+     */
+    public static function prices(): array
+    {
+        return [
+            'copy' => (int) config('vitrin.credits.copy'),
+            'photo' => (int) config('vitrin.credits.photo'),
+        ];
+    }
+
+    /**
      * Total credits for a generation.
      */
     public static function cost(int $copies, int $photos): int
     {
-        return $copies * config('vitrin.credits.copy') + $photos * config('vitrin.credits.photo');
+        $prices = self::prices();
+
+        return $copies * $prices['copy'] + $photos * $prices['photo'];
     }
 
     /**
@@ -53,9 +68,12 @@ class ListingGenerator
 
     public function start(User $user, NewListing $input): Listing
     {
-        $image = ProductImage::normalize($input->photo->getRealPath(), config('vitrin.uploads.max_dimension'));
-        $copyCost = config('vitrin.credits.copy');
-        $photoCost = config('vitrin.credits.photo');
+        $image = ProductImage::normalize(
+            $input->photo->getRealPath(),
+            config('vitrin.uploads.max_dimension'),
+            config('vitrin.uploads.max_megapixels') * 1_000_000,
+        );
+        ['copy' => $copyCost, 'photo' => $photoCost] = self::prices();
 
         $listing = DB::transaction(function () use ($user, $input, $image, $copyCost, $photoCost) {
             $listing = $user->listings()->make([
@@ -112,8 +130,7 @@ class ListingGenerator
      */
     public function retry(Listing $listing): bool
     {
-        $copyCost = config('vitrin.credits.copy');
-        $photoCost = config('vitrin.credits.photo');
+        ['copy' => $copyCost, 'photo' => $photoCost] = self::prices();
 
         $started = DB::transaction(function () use ($listing, $copyCost, $photoCost) {
             $locked = Listing::query()->whereKey($listing->getKey())->lockForUpdate()->first();
@@ -153,7 +170,7 @@ class ListingGenerator
      */
     public function regenerateCopy(ListingCopy $copy): bool
     {
-        $cost = config('vitrin.credits.copy');
+        $cost = self::prices()['copy'];
 
         $started = DB::transaction(function () use ($copy, $cost) {
             $locked = ListingCopy::query()->whereKey($copy->getKey())->lockForUpdate()->first();
@@ -187,7 +204,7 @@ class ListingGenerator
      */
     public function regeneratePhoto(ListingPhoto $photo): bool
     {
-        $cost = config('vitrin.credits.photo');
+        $cost = self::prices()['photo'];
 
         $started = DB::transaction(function () use ($photo, $cost) {
             $locked = ListingPhoto::query()->whereKey($photo->getKey())->lockForUpdate()->first();
@@ -222,29 +239,39 @@ class ListingGenerator
      */
     public function failItem(ListingCopy|ListingPhoto $item, string $message): void
     {
-        $item->refresh();
+        // Locked so two failure paths for the same item can't both refund.
+        $failed = DB::transaction(function () use ($item, $message) {
+            $locked = $item->newQuery()->whereKey($item->getKey())->lockForUpdate()->first();
 
-        if ($item->status->isFinished()) {
-            return;
-        }
+            if (! $locked instanceof ListingCopy && ! $locked instanceof ListingPhoto) {
+                return false;
+            }
 
-        DB::transaction(function () use ($item, $message) {
+            if ($locked->status->isFinished()) {
+                return false;
+            }
+
             $refunded = match (true) {
-                $item->cost === 1 => ' 1 credit was refunded.',
-                $item->cost > 1 => " {$item->cost} credits were refunded.",
+                $locked->cost === 1 => ' 1 credit was refunded.',
+                $locked->cost > 1 => " {$locked->cost} credits were refunded.",
                 default => '',
             };
 
-            $item->update(['status' => GenerationStatus::Failed, 'error' => $message.$refunded]);
+            $locked->update(['status' => GenerationStatus::Failed, 'error' => $message.$refunded]);
 
-            $label = $item instanceof ListingCopy
-                ? "{$item->marketplace->label()} listing ({$item->language->englishName()}) failed"
-                : "{$item->style->label()} photo failed";
+            $label = $locked instanceof ListingCopy
+                ? "{$locked->marketplace->label()} listing ({$locked->language->englishName()}) failed"
+                : "{$locked->style->label()} photo failed";
 
-            $this->credits->refund($item->listing->user, $item->cost, $label, $item->listing);
+            $this->credits->refund($locked->listing->user, $locked->cost, $label, $locked->listing);
+
+            return true;
         });
 
-        $item->listing->syncStatus();
+        if ($failed) {
+            $item->refresh();
+            $item->listing->syncStatus();
+        }
     }
 
     /**
@@ -254,24 +281,35 @@ class ListingGenerator
      */
     public function failListing(Listing $listing, string $message): void
     {
-        DB::transaction(function () use ($listing, $message) {
-            $listing->refresh();
+        $found = DB::transaction(function () use ($listing, $message) {
+            // Locked like retry(), so the two can't interleave and refund twice.
+            $locked = Listing::query()->whereKey($listing->getKey())->lockForUpdate()->first();
 
-            $unfinished = $listing->copies->concat($listing->photos)
+            if ($locked === null) {
+                return false;
+            }
+
+            $unfinished = $locked->copies->concat($locked->photos)
                 ->reject(fn (ListingCopy|ListingPhoto $item) => $item->status->isFinished());
 
             foreach ($unfinished as $item) {
                 $item->update(['status' => GenerationStatus::Failed, 'error' => null]);
             }
 
-            $listing->update(['status' => ListingStatus::Failed, 'error' => $message]);
+            $locked->update(['status' => ListingStatus::Failed, 'error' => $message]);
 
             $this->credits->refund(
-                $listing->user,
+                $locked->user,
                 $unfinished->sum('cost'),
                 'Listing could not be generated',
-                $listing,
+                $locked,
             );
+
+            return true;
         });
+
+        if ($found) {
+            $listing->refresh();
+        }
     }
 }

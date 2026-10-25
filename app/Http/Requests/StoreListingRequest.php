@@ -7,8 +7,11 @@ use App\Enums\Language;
 use App\Enums\Marketplace;
 use App\Enums\PhotoStyle;
 use App\Services\ListingGenerator;
+use App\Support\ProductImage;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Validator;
@@ -26,6 +29,7 @@ class StoreListingRequest extends FormRequest
     public function rules(): array
     {
         $min = config('vitrin.uploads.min_dimension');
+        $maxMegapixels = config('vitrin.uploads.max_megapixels');
 
         return [
             'photo' => [
@@ -34,6 +38,13 @@ class StoreListingRequest extends FormRequest
                     ->types(['jpg', 'jpeg', 'png', 'webp'])
                     ->max(config('vitrin.uploads.max_kb'))
                     ->dimensions(Rule::dimensions()->minWidth($min)->minHeight($min)),
+                function (string $attribute, mixed $value, Closure $fail) use ($maxMegapixels) {
+                    $pixels = $value instanceof UploadedFile ? ProductImage::pixelCount($value->getRealPath()) : null;
+
+                    if ($pixels !== null && $pixels > $maxMegapixels * 1_000_000) {
+                        $fail("The photo should be at most {$maxMegapixels} megapixels.");
+                    }
+                },
             ],
             'name' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],

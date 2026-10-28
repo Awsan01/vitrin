@@ -43,6 +43,43 @@ return [
     ],
 
     /*
+    | Credit packs sold through Paddle (config/services.php). The price itself
+    | lives in Paddle: create one product with a one-time price per pack and
+    | put each price ID (pri_...) in .env. A pack without a price ID isn't
+    | offered. Changing "credits" only affects purchases started afterwards.
+    */
+    'packs' => [
+        'starter' => [
+            'name' => 'Starter',
+            'credits' => 100,
+            'price_id' => env('PADDLE_PRICE_STARTER'),
+        ],
+        'growth' => [
+            'name' => 'Growth',
+            'credits' => 300,
+            'price_id' => env('PADDLE_PRICE_GROWTH'),
+            'popular' => true,
+        ],
+        'business' => [
+            'name' => 'Business',
+            'credits' => 1000,
+            'price_id' => env('PADDLE_PRICE_BUSINESS'),
+        ],
+    ],
+
+    /*
+    | Who runs the service. Shown in the terms, privacy policy and refund
+    | policy; Paddle's website review requires the legal name (your full name
+    | as a sole trader, or the company name) in the terms.
+    */
+    'business' => [
+        'legal_name' => env('VITRIN_LEGAL_NAME'),
+        'address' => env('VITRIN_LEGAL_ADDRESS'),
+        'country' => env('VITRIN_LEGAL_COUNTRY', 'Türkiye'),
+        'email' => env('VITRIN_SUPPORT_EMAIL', env('MAIL_FROM_ADDRESS')),
+    ],
+
+    /*
     | Where uploads and generated photos are stored. Files are served
     | through authorized routes, so a private disk is fine (and keeps
     | unreleased products private).

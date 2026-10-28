@@ -37,6 +37,11 @@ class AppServiceProvider extends ServiceProvider
     {
         RateLimiter::for('generations', fn (Request $request) => Limit::perMinute(10)
             ->by($request->user()?->id ?: $request->ip()));
+
+        // Each checkout records a pending purchase, so cap how many one
+        // account can open.
+        RateLimiter::for('checkouts', fn (Request $request) => Limit::perMinute(10)
+            ->by($request->user()?->id ?: $request->ip()));
     }
 
     /**

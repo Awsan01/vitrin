@@ -21,7 +21,8 @@ class AddSecurityHeaders
         'X-Frame-Options' => 'DENY',
         'X-Content-Type-Options' => 'nosniff',
         'Referrer-Policy' => 'strict-origin-when-cross-origin',
-        'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), payment=()',
+        // Paddle's checkout frame asks for "payment" (Apple Pay, Google Pay).
+        'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), payment=(self "https://buy.paddle.com" "https://sandbox-buy.paddle.com")',
         // Only directives that can't break the app's own scripts and styles.
         'Content-Security-Policy' => "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
     ];

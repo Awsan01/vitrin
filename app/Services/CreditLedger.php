@@ -17,9 +17,9 @@ class CreditLedger
     /**
      * Add credits (signup bonus, purchase, manual grant, refund).
      */
-    public function add(User $user, int $amount, string $reason, ?string $description = null, ?Listing $listing = null): CreditTransaction
+    public function add(User $user, int $amount, string $reason, ?string $description = null, ?Listing $listing = null, ?string $reference = null): CreditTransaction
     {
-        return $this->record($user, abs($amount), $reason, $description, $listing);
+        return $this->record($user, abs($amount), $reason, $description, $listing, $reference);
     }
 
     /**
@@ -41,9 +41,28 @@ class CreditLedger
         return $this->record($user, $amount, CreditTransaction::REFUND, $description, $listing);
     }
 
-    protected function record(User $user, int $amount, string $reason, ?string $description, ?Listing $listing): CreditTransaction
+    /**
+     * Take credits back after a purchase was refunded or charged back. Only
+     * what the balance still holds can be removed (spent credits are gone),
+     * so the balance never drops below zero. Returns how many were removed.
+     */
+    public function reverse(User $user, int $amount, string $description, string $reference): int
     {
-        return DB::transaction(function () use ($user, $amount, $reason, $description, $listing) {
+        return DB::transaction(function () use ($user, $amount, $description, $reference) {
+            $available = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail()->credits;
+            $removed = min(abs($amount), $available);
+
+            if ($removed > 0) {
+                $this->record($user, -$removed, CreditTransaction::PURCHASE_REVERSAL, $description, null, $reference);
+            }
+
+            return $removed;
+        });
+    }
+
+    protected function record(User $user, int $amount, string $reason, ?string $description, ?Listing $listing, ?string $reference = null): CreditTransaction
+    {
+        return DB::transaction(function () use ($user, $amount, $reason, $description, $listing, $reference) {
             /** @var User $locked */
             $locked = User::query()->lockForUpdate()->findOrFail($user->getKey());
 
@@ -62,6 +81,7 @@ class CreditLedger
                 'balance_after' => $balance,
                 'reason' => $reason,
                 'description' => $description,
+                'reference' => $reference,
             ]);
         });
     }

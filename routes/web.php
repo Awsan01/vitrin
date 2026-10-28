@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ListingController;
 use App\Http\Controllers\ListingCopyController;
 use App\Http\Controllers\ListingExportController;
@@ -8,13 +9,15 @@ use App\Http\Controllers\ListingPhotoController;
 use App\Http\Controllers\ListingPhotosArchiveController;
 use App\Http\Controllers\ListingRetryController;
 use App\Http\Controllers\ListingSourceController;
-use App\Services\ListingGenerator;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'welcome', [
-    'signupCredits' => (int) config('vitrin.credits.signup'),
-    'costs' => ListingGenerator::prices(),
-])->name('home');
+Route::get('/', HomeController::class)->name('home');
+
+// Public policies, linked from every page footer (Paddle's website review
+// requires them).
+Route::inertia('terms', 'legal/terms')->name('legal.terms');
+Route::inertia('privacy', 'legal/privacy')->name('legal.privacy');
+Route::inertia('refunds', 'legal/refunds')->name('legal.refunds');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');

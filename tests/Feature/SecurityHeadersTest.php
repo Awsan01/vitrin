@@ -16,6 +16,8 @@ class SecurityHeadersTest extends TestCase
             ->assertHeader('X-Frame-Options', 'DENY')
             ->assertHeader('X-Content-Type-Options', 'nosniff')
             ->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+            // Apple Pay and Google Pay run inside Paddle's checkout frame.
+            ->assertHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(self "https://buy.paddle.com" "https://sandbox-buy.paddle.com")')
             ->assertHeader('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'")
             ->assertHeaderMissing('Strict-Transport-Security');
     }

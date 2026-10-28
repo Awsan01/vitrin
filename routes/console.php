@@ -16,3 +16,6 @@ Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=3')
     ->withoutOverlapping(10);
 
 Schedule::command('queue:prune-failed --hours=168')->daily();
+
+// Removes checkouts that were opened but never paid (CreditPurchase::prunable).
+Schedule::command('model:prune')->daily();

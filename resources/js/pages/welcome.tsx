@@ -2,11 +2,14 @@ import { Head, Link, usePage } from '@inertiajs/react';
 import type { CSSProperties, ReactNode } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { charLength } from '@/components/char-count';
+import { CreditPackCard } from '@/components/credit-pack-card';
 import { TeaGlass, TeaGlassTop } from '@/components/marketing/tea-glass';
+import { SiteFooter } from '@/components/site-footer';
 import { Button } from '@/components/ui/button';
 import { cn, plural } from '@/lib/utils';
 import { dashboard, login, register } from '@/routes';
-import type { Costs } from '@/types';
+import { index as creditsIndex } from '@/routes/credits';
+import type { Costs, CreditPack } from '@/types';
 
 type Sample = {
     market: string;
@@ -130,18 +133,35 @@ const frames: Frame[] = [
     },
 ];
 
+const description =
+    'Upload one product photo and get titles, bullet points, descriptions and keywords for Trendyol, Hepsiburada, Amazon, noon and Etsy in Turkish, Arabic and English, plus new product photos.';
+
 export default function Welcome({
     signupCredits,
     costs,
+    packs,
 }: {
     signupCredits: number;
     costs: Costs;
+    packs: CreditPack[];
 }) {
     const { auth, name } = usePage().props;
 
     return (
         <>
-            <Head title="Marketplace listings from one product photo" />
+            <Head title="Marketplace listings from one product photo">
+                <meta
+                    head-key="description"
+                    name="description"
+                    content={description}
+                />
+                <meta
+                    property="og:title"
+                    content={`${name}: listings from one product photo`}
+                />
+                <meta property="og:description" content={description} />
+                <meta property="og:type" content="website" />
+            </Head>
 
             <div className="min-h-screen bg-background text-foreground">
                 <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 md:px-8">
@@ -357,18 +377,67 @@ export default function Welcome({
                             </div>
                         </div>
                     </section>
+
+                    {packs.length > 0 && (
+                        <section
+                            id="pricing"
+                            className="mx-auto max-w-6xl scroll-mt-6 px-5 py-20 md:px-8"
+                        >
+                            <div className="max-w-2xl">
+                                <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
+                                    Credit packs
+                                </h2>
+                                <p className="mt-4 text-muted-foreground">
+                                    Start with {signupCredits} free credits,
+                                    then buy a pack when you need more. One-time
+                                    payments, no subscription, and credits don't
+                                    expire.
+                                </p>
+                            </div>
+                            <ul className="mt-10 grid gap-4 sm:grid-cols-3">
+                                {packs.map((pack) => (
+                                    <li key={pack.key}>
+                                        <CreditPackCard
+                                            pack={pack}
+                                            costs={costs}
+                                            className="p-5"
+                                            action={
+                                                <Button
+                                                    size="sm"
+                                                    variant={
+                                                        pack.popular
+                                                            ? 'default'
+                                                            : 'outline'
+                                                    }
+                                                    asChild
+                                                >
+                                                    <Link
+                                                        href={
+                                                            auth.user
+                                                                ? creditsIndex()
+                                                                : register()
+                                                        }
+                                                    >
+                                                        {auth.user
+                                                            ? 'Buy'
+                                                            : 'Get started'}
+                                                    </Link>
+                                                </Button>
+                                            }
+                                        />
+                                    </li>
+                                ))}
+                            </ul>
+                            <p className="mt-6 text-sm text-muted-foreground">
+                                The checkout shows the final price for your
+                                country, including any tax. Payments are
+                                processed securely by Paddle.
+                            </p>
+                        </section>
+                    )}
                 </main>
 
-                <footer className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-8 text-sm text-muted-foreground md:px-8">
-                    <span className="flex items-center gap-2">
-                        <AppLogoIcon className="size-4 fill-current" />
-                        {name}
-                    </span>
-                    <span>
-                        Listings for Trendyol, Hepsiburada, Amazon, noon, Etsy
-                        and your own store.
-                    </span>
-                </footer>
+                <SiteFooter />
             </div>
         </>
     );

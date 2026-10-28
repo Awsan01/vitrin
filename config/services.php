@@ -35,4 +35,24 @@ return [
         ],
     ],
 
+    /*
+    | Paddle sells the credit packs as merchant of record. Sandbox and live
+    | are separate accounts, each with its own token, key, secret and prices.
+    */
+    'paddle' => [
+        // "sandbox" (test cards, no real money) or "production".
+        'environment' => env('PADDLE_ENVIRONMENT', 'sandbox') === 'production' ? 'production' : 'sandbox',
+        // Public token for Paddle.js: Developer tools > Authentication > Client-side tokens.
+        'client_token' => env('PADDLE_CLIENT_TOKEN'),
+        // Server-side API key, only used to read the prices shown on the site
+        // (needs the "price.read" permission and nothing else).
+        'api_key' => env('PADDLE_API_KEY'),
+        // Secret of the notification destination that points at /webhooks/paddle.
+        'webhook_secret' => env('PADDLE_WEBHOOK_SECRET'),
+        // How old a webhook signature may be, in seconds. Paddle's own default
+        // is 5; a wider window keeps payments flowing if the server clock
+        // drifts, and replays are harmless because fulfilment is idempotent.
+        'webhook_tolerance' => (int) env('PADDLE_WEBHOOK_TOLERANCE', 300),
+    ],
+
 ];

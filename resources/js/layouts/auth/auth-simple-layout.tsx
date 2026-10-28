@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { home } from '@/routes';
+import { privacy, refunds, terms } from '@/routes/legal';
 import type { AuthLayoutProps } from '@/types';
 
 export default function AuthSimpleLayout({
@@ -33,6 +34,20 @@ export default function AuthSimpleLayout({
                     {children}
                 </div>
             </div>
+            <nav
+                aria-label="Policies"
+                className="flex gap-4 text-xs text-muted-foreground"
+            >
+                <Link href={terms()} className="hover:text-foreground">
+                    Terms
+                </Link>
+                <Link href={privacy()} className="hover:text-foreground">
+                    Privacy
+                </Link>
+                <Link href={refunds()} className="hover:text-foreground">
+                    Refunds
+                </Link>
+            </nav>
         </div>
     );
 }

@@ -43,6 +43,13 @@ class HandleInertiaRequests extends Middleware
             ],
             'credits' => fn () => $request->user()?->credits,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // Who runs the service, for footers and the legal pages.
+            'business' => fn () => [
+                'legal_name' => config('vitrin.business.legal_name') ?: config('app.name'),
+                'address' => config('vitrin.business.address'),
+                'country' => config('vitrin.business.country'),
+                'email' => config('vitrin.business.email'),
+            ],
         ];
     }
 }

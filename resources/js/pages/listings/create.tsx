@@ -447,7 +447,7 @@ export default function CreateListing({
                                     href={creditsIndex()}
                                     className="underline underline-offset-4"
                                 >
-                                    check your credits
+                                    buy more credits
                                 </Link>
                                 .
                             </p>

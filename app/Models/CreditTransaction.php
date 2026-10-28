@@ -18,10 +18,11 @@ use Illuminate\Support\Carbon;
  * @property int $balance_after
  * @property string $reason
  * @property string|null $description
+ * @property string|null $reference
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['listing_id', 'amount', 'balance_after', 'reason', 'description'])]
+#[Fillable(['listing_id', 'amount', 'balance_after', 'reason', 'description', 'reference'])]
 class CreditTransaction extends Model
 {
     public const SIGNUP = 'signup';
@@ -31,6 +32,11 @@ class CreditTransaction extends Model
     public const REFUND = 'refund';
 
     public const GRANT = 'grant';
+
+    public const PURCHASE = 'purchase';
+
+    /** Credits taken back because a purchase was refunded or charged back. */
+    public const PURCHASE_REVERSAL = 'purchase_reversal';
 
     /**
      * @return BelongsTo<User, $this>

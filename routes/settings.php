@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\Settings\CreditsController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -27,4 +28,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
 
     Route::get('settings/credits', CreditsController::class)->name('credits.index');
+
+    Route::post('settings/credits/purchases', [CreditPurchaseController::class, 'store'])
+        ->middleware('throttle:checkouts')
+        ->name('credits.purchases.store');
 });

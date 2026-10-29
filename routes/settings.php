@@ -32,4 +32,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('settings/credits/purchases', [CreditPurchaseController::class, 'store'])
         ->middleware('throttle:checkouts')
         ->name('credits.purchases.store');
+
+    Route::middleware(['can:view,purchase', 'throttle:payment-checks'])->group(function () {
+        Route::post('settings/credits/purchases/{purchase}/confirm', [CreditPurchaseController::class, 'confirm'])
+            ->name('credits.purchases.confirm');
+        Route::get('settings/credits/purchases/{purchase}/invoice', [CreditPurchaseController::class, 'invoice'])
+            ->name('credits.purchases.invoice');
+    });
 });

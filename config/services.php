@@ -44,8 +44,10 @@ return [
         'environment' => env('PADDLE_ENVIRONMENT', 'sandbox') === 'production' ? 'production' : 'sandbox',
         // Public token for Paddle.js: Developer tools > Authentication > Client-side tokens.
         'client_token' => env('PADDLE_CLIENT_TOKEN'),
-        // Server-side API key, only used to read the prices shown on the site
-        // (needs the "price.read" permission and nothing else).
+        // Server-side API key. Reads the prices shown on the site, checks
+        // payments and fetches invoices, so it needs the "price.read" and
+        // "transaction.read" permissions; add "notification_setting.read" so
+        // `php artisan paddle:check` can check the webhook destination too.
         'api_key' => env('PADDLE_API_KEY'),
         // Secret of the notification destination that points at /webhooks/paddle.
         'webhook_secret' => env('PADDLE_WEBHOOK_SECRET'),

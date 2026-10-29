@@ -67,6 +67,17 @@ class PaddleWebhookTest extends TestCase
         $this->assertSame(PurchaseStatus::Pending, $this->purchase->fresh()->status);
     }
 
+    public function test_refused_signatures_are_logged_so_a_wrong_secret_gets_noticed(): void
+    {
+        Log::spy();
+
+        $this->postWebhook($this->transactionCompleted($this->purchase), signature: 'ts=1;h1=forged')->assertForbidden();
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message) => str_contains($message, 'invalid signature'))
+            ->once();
+    }
+
     public function test_webhooks_are_refused_until_the_secret_is_set(): void
     {
         config(['services.paddle.webhook_secret' => null]);

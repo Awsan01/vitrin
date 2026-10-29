@@ -48,6 +48,7 @@ class CreditsController extends Controller
                 'status' => $p->status->value,
                 'status_label' => $p->status->label(),
                 'completed_at' => $p->completed_at?->toIso8601String(),
+                'invoice' => $p->paddle_transaction_id !== null,
             ]);
 
         return Inertia::render('settings/credits', [
@@ -57,6 +58,9 @@ class CreditsController extends Controller
             'packs' => $paddle->packs(),
             'purchases' => $purchases,
             'paddle' => $paddle->checkoutConfig(),
+            // Why there's no Buy button, for whoever is setting the site up.
+            // Only in debug mode, so a live site never lists its settings.
+            'missingSettings' => config('app.debug') ? $paddle->missingSettings() : null,
         ]);
     }
 }

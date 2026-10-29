@@ -146,6 +146,8 @@ export default function Welcome({
     packs: CreditPack[];
 }) {
     const { auth, name } = usePage().props;
+    // Packs are only listed once Paddle is set up and they can be bought.
+    const forSale = packs.filter((pack) => pack.purchasable);
 
     return (
         <>
@@ -378,7 +380,7 @@ export default function Welcome({
                         </div>
                     </section>
 
-                    {packs.length > 0 && (
+                    {forSale.length > 0 && (
                         <section
                             id="pricing"
                             className="mx-auto max-w-6xl scroll-mt-6 px-5 py-20 md:px-8"
@@ -395,7 +397,7 @@ export default function Welcome({
                                 </p>
                             </div>
                             <ul className="mt-10 grid gap-4 sm:grid-cols-3">
-                                {packs.map((pack) => (
+                                {forSale.map((pack) => (
                                     <li key={pack.key}>
                                         <CreditPackCard
                                             pack={pack}

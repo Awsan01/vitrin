@@ -1,4 +1,4 @@
-import { Head, Link, router, usePoll } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { CheckoutEventNames } from '@paddle/paddle-js';
 import type { CheckoutOpenOptions } from '@paddle/paddle-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,10 +8,14 @@ import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useAppearance } from '@/hooks/use-appearance';
-import { openPaddleCheckout } from '@/lib/paddle';
+import { openPaddleCheckout, purchaseIdOf } from '@/lib/paddle';
 import { cn, plural } from '@/lib/utils';
 import { index as creditsIndex } from '@/routes/credits';
-import { store as startPurchase } from '@/routes/credits/purchases';
+import {
+    confirm as confirmPurchase,
+    invoice as purchaseInvoice,
+    store as startPurchase,
+} from '@/routes/credits/purchases';
 import { refunds, terms } from '@/routes/legal';
 import { show } from '@/routes/listings';
 import type {
@@ -38,9 +42,16 @@ const reasonLabels: Record<string, string> = {
     purchase_reversal: 'Purchase refunded',
 };
 
-// How long to wait for Paddle's webhook after a payment before giving up
-// on showing the new balance live.
-const CREDIT_WAIT_MS = 60_000;
+// After a payment, the server checks it with Paddle after each of these
+// waits until the credits are in, about a minute in all. Paddle usually
+// completes a payment within seconds, and its webhook adds the credits too.
+const CONFIRM_DELAYS_MS = [1500, 2500, 4000, 6000, 10_000, 15_000, 20_000];
+
+const SLOW_CREDITS =
+    'Your payment went through. The credits can take a few minutes to appear; refresh this page shortly.';
+
+/** A payment the checkout reported, waiting for its credits. */
+type PaidCheckout = { purchaseId: string; transactionId: string };
 
 export default function Credits({
     balance,
@@ -49,6 +60,7 @@ export default function Credits({
     packs,
     purchases,
     paddle,
+    missingSettings,
 }: {
     balance: number;
     transactions: CreditTransaction[];
@@ -56,51 +68,74 @@ export default function Credits({
     packs: CreditPack[];
     purchases: CreditPurchase[];
     paddle: PaddleConfig | null;
+    /** Settings payments still need; only sent while APP_DEBUG is on. */
+    missingSettings: string[] | null;
 }) {
     const { resolvedAppearance } = useAppearance();
     const [pendingPack, setPendingPack] = useState<string | null>(null);
-    const [awaitingCredits, setAwaitingCredits] = useState(false);
-    const balanceBeforePayment = useRef(balance);
-    const balanceNow = useRef(balance);
+    const [paid, setPaid] = useState<PaidCheckout | null>(null);
 
-    // After a payment, reload until the webhook has added the credits.
-    const { start, stop } = usePoll(
-        2000,
-        { only: ['balance', 'transactions', 'purchases', 'credits'] },
-        { autoStart: false },
-    );
-
+    // After a payment, ask the server to confirm it until the purchase
+    // shows up as paid. The browser only sends the transaction ID; the
+    // server reads the payment itself from Paddle.
     useEffect(() => {
-        balanceNow.current = balance;
-
-        if (awaitingCredits && balance > balanceBeforePayment.current) {
-            stop();
-            setAwaitingCredits(false);
-            toast.success(
-                `${plural(balance - balanceBeforePayment.current, 'credit')} added. Thank you!`,
-            );
-        }
-    }, [balance, awaitingCredits, stop]);
-
-    useEffect(() => {
-        if (!awaitingCredits) {
+        if (!paid) {
             return;
         }
 
-        start();
-        const timer = window.setTimeout(() => {
-            stop();
-            setAwaitingCredits(false);
-            toast.info(
-                'Your payment went through. The credits can take a minute to appear; refresh this page shortly.',
+        let attempt = 0;
+        let finished = false;
+        let timer: number | undefined;
+
+        const check = () => {
+            router.post(
+                confirmPurchase(paid.purchaseId),
+                { transaction_id: paid.transactionId },
+                {
+                    preserveScroll: true,
+                    only: ['balance', 'transactions', 'purchases', 'credits'],
+                    onSuccess: (page) => {
+                        const purchase = (
+                            page.props.purchases as CreditPurchase[]
+                        ).find((p) => p.id === paid.purchaseId);
+
+                        if (purchase) {
+                            finished = true;
+                            setPaid(null);
+                            toast.success(
+                                `${plural(purchase.credits, 'credit')} added. Thank you!`,
+                            );
+                        }
+                    },
+                    onFinish: () => {
+                        if (finished) {
+                            return;
+                        }
+
+                        attempt++;
+
+                        if (attempt < CONFIRM_DELAYS_MS.length) {
+                            timer = window.setTimeout(
+                                check,
+                                CONFIRM_DELAYS_MS[attempt],
+                            );
+                        } else {
+                            finished = true;
+                            setPaid(null);
+                            toast.info(SLOW_CREDITS);
+                        }
+                    },
+                },
             );
-        }, CREDIT_WAIT_MS);
+        };
+
+        timer = window.setTimeout(check, CONFIRM_DELAYS_MS[0]);
 
         return () => {
+            finished = true;
             window.clearTimeout(timer);
-            stop();
         };
-    }, [awaitingCredits, start, stop]);
+    }, [paid]);
 
     const openCheckout = useCallback(
         async (options: CheckoutOpenOptions) => {
@@ -119,9 +154,22 @@ export default function Credits({
                     },
                 },
                 (event) => {
-                    if (event.name === CheckoutEventNames.CHECKOUT_COMPLETED) {
-                        balanceBeforePayment.current = balanceNow.current;
-                        setAwaitingCredits(true);
+                    if (
+                        event.name !== CheckoutEventNames.CHECKOUT_COMPLETED ||
+                        !event.data
+                    ) {
+                        return;
+                    }
+
+                    const purchaseId = purchaseIdOf(event.data);
+
+                    if (purchaseId) {
+                        setPaid({
+                            purchaseId,
+                            transactionId: event.data.transaction_id,
+                        });
+                    } else {
+                        toast.info(SLOW_CREDITS);
                     }
                 },
             );
@@ -216,7 +264,7 @@ export default function Credits({
                     </dl>
                 </div>
 
-                {awaitingCredits && (
+                {paid && (
                     <p
                         role="status"
                         className="flex items-center gap-2 rounded-lg border px-4 py-3 text-sm"
@@ -235,9 +283,21 @@ export default function Credits({
                 />
 
                 {forSale.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                        Buying credits online isn't available yet.
-                    </p>
+                    <div className="space-y-3 text-sm text-muted-foreground">
+                        <p>Buying credits online isn't available yet.</p>
+                        {missingSettings && missingSettings.length > 0 && (
+                            <p className="rounded-lg border border-dashed px-4 py-3">
+                                Setting up the site? Payments stay off until
+                                these are set in <code>.env</code>:{' '}
+                                <code className="font-medium text-foreground">
+                                    {missingSettings.join(', ')}
+                                </code>
+                                . Then run <code>php artisan paddle:check</code>{' '}
+                                to test the Paddle setup. This note only shows
+                                while APP_DEBUG is on.
+                            </p>
+                        )}
+                    </div>
                 ) : (
                     <>
                         <ul className="grid gap-3 sm:grid-cols-3">
@@ -254,7 +314,10 @@ export default function Credits({
                                                         ? 'default'
                                                         : 'outline'
                                                 }
-                                                disabled={pendingPack !== null}
+                                                disabled={
+                                                    pendingPack !== null ||
+                                                    paid !== null
+                                                }
                                                 onClick={() => buy(pack)}
                                             >
                                                 {pendingPack === pack.key && (
@@ -309,16 +372,32 @@ export default function Credits({
                                         {purchase.pack} pack,{' '}
                                         {plural(purchase.credits, 'credit')}
                                     </span>
-                                    {purchase.completed_at && (
-                                        <time
-                                            dateTime={purchase.completed_at}
-                                            className="block text-xs text-muted-foreground"
-                                        >
-                                            {dateFormat.format(
-                                                new Date(purchase.completed_at),
-                                            )}
-                                        </time>
-                                    )}
+                                    <span className="block text-xs text-muted-foreground">
+                                        {purchase.completed_at && (
+                                            <time
+                                                dateTime={purchase.completed_at}
+                                            >
+                                                {dateFormat.format(
+                                                    new Date(
+                                                        purchase.completed_at,
+                                                    ),
+                                                )}
+                                            </time>
+                                        )}
+                                        {purchase.invoice && (
+                                            <>
+                                                {purchase.completed_at && ', '}
+                                                <a
+                                                    href={purchaseInvoice.url(
+                                                        purchase.id,
+                                                    )}
+                                                    className="underline underline-offset-2"
+                                                >
+                                                    download invoice
+                                                </a>
+                                            </>
+                                        )}
+                                    </span>
                                 </span>
                                 <span className="text-end">
                                     <span className="block font-medium tabular-nums">

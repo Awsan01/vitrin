@@ -19,3 +19,7 @@ Schedule::command('queue:prune-failed --hours=168')->daily();
 
 // Removes checkouts that were opened but never paid (CreditPurchase::prunable).
 Schedule::command('model:prune')->daily();
+
+// Adds the credits for paid checkouts whose webhook never arrived
+// (CreditPurchases::reconcile). Does nothing while payments are off.
+Schedule::command('paddle:reconcile')->everyTenMinutes()->withoutOverlapping();

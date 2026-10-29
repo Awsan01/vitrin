@@ -16,6 +16,8 @@ export type CreditPurchase = {
     status: 'completed' | 'partially_refunded' | 'refunded';
     status_label: string;
     completed_at: string | null;
+    /** Whether Paddle issued an invoice that can be downloaded. */
+    invoice: boolean;
 };
 
 /** What Paddle.js needs in the browser (a public, client-side token). */

@@ -3,6 +3,11 @@
 namespace App\Services;
 
 use App\Data\CreditPack;
+use Carbon\CarbonInterface;
+use Generator;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Number;
@@ -10,21 +15,38 @@ use NumberFormatter;
 use Throwable;
 
 /**
- * Paddle settings and the prices shown on the site. The checkout itself
- * runs in the browser (Paddle.js) and payments arrive by webhook, so this
- * is the only place the server talks to Paddle's API.
+ * Paddle settings and every call the server makes to Paddle's API: the
+ * prices shown on the site, checking payments, invoices and the setup
+ * check. The checkout itself runs in the browser (Paddle.js) and payments
+ * arrive by webhook.
  */
 class Paddle
 {
     /**
-     * Whether credit packs can be bought: the browser needs the client-side
-     * token, and without the webhook secret no payment could be credited.
+     * Whether credit packs can be bought. Every setting is needed: the
+     * browser opens the checkout with the client-side token, the server
+     * shows prices and checks payments with the API key, and without the
+     * webhook secret refunds (and payments made after the page was closed)
+     * would never arrive.
      */
     public function enabled(): bool
     {
-        return $this->clientToken() !== null
-            && (string) config('services.paddle.webhook_secret') !== ''
-            && CreditPack::purchasable() !== [];
+        return $this->missingSettings() === [];
+    }
+
+    /**
+     * The .env settings payments still need, e.g. ['PADDLE_API_KEY'].
+     *
+     * @return list<string>
+     */
+    public function missingSettings(): array
+    {
+        return array_keys(array_filter([
+            'PADDLE_CLIENT_TOKEN' => $this->clientToken() === null,
+            'PADDLE_API_KEY' => $this->apiKey() === '',
+            'PADDLE_WEBHOOK_SECRET' => (string) config('services.paddle.webhook_secret') === '',
+            'PADDLE_PRICE_*' => CreditPack::purchasable() === [],
+        ]));
     }
 
     /**
@@ -38,6 +60,11 @@ class Paddle
     public function clientToken(): ?string
     {
         return config('services.paddle.client_token') ?: null;
+    }
+
+    public function apiKey(): string
+    {
+        return (string) config('services.paddle.api_key');
     }
 
     /**
@@ -87,9 +114,8 @@ class Paddle
     public function prices(): array
     {
         $ids = array_map(fn (CreditPack $pack) => (string) $pack->priceId, CreditPack::purchasable());
-        $key = (string) config('services.paddle.api_key');
 
-        if ($ids === [] || $key === '') {
+        if ($ids === [] || $this->apiKey() === '') {
             return [];
         }
 
@@ -101,10 +127,9 @@ class Paddle
         }
 
         try {
-            $response = Http::withToken($key)
-                ->acceptJson()
+            $response = $this->api()
                 ->timeout(5)
-                ->get($this->apiUrl().'/prices', ['id' => implode(',', $ids), 'per_page' => 200])
+                ->get('/prices', ['id' => implode(',', $ids), 'per_page' => 200])
                 ->throw();
 
             $prices = [];
@@ -127,6 +152,92 @@ class Paddle
 
             return [];
         }
+    }
+
+    /**
+     * A transaction as Paddle has it, or null when Paddle doesn't know the
+     * ID (for example a sandbox ID sent to the live account).
+     *
+     * @return array<string, mixed>|null
+     *
+     * @throws ConnectionException
+     * @throws RequestException
+     */
+    public function transaction(string $id): ?array
+    {
+        $response = $this->api()->get('/transactions/'.rawurlencode($id));
+
+        if ($response->notFound()) {
+            return null;
+        }
+
+        return (array) $response->throw()->json('data');
+    }
+
+    /**
+     * Completed transactions created at or after the given time, fetched
+     * page by page (Paddle returns at most 30 at a time).
+     *
+     * @return Generator<int, array<string, mixed>>
+     *
+     * @throws ConnectionException
+     * @throws RequestException
+     */
+    public function completedTransactions(CarbonInterface $since): Generator
+    {
+        $query = [
+            'status' => 'completed',
+            'created_at[GTE]' => $since->toIso8601ZuluString(),
+            'per_page' => 30,
+        ];
+
+        // Capped, so a misbehaving response can't keep this looping.
+        for ($page = 0; $page < 100; $page++) {
+            $response = $this->api()->get('/transactions', $query)->throw();
+            $last = null;
+
+            foreach ((array) $response->json('data') as $transaction) {
+                if (is_array($transaction)) {
+                    $last = $transaction['id'] ?? null;
+
+                    yield $transaction;
+                }
+            }
+
+            if ($response->json('meta.pagination.has_more') !== true || ! is_string($last) || $last === ($query['after'] ?? null)) {
+                return;
+            }
+
+            $query['after'] = $last;
+        }
+    }
+
+    /**
+     * A temporary link (valid for about an hour) to the PDF invoice Paddle
+     * issued for a completed transaction.
+     *
+     * @throws ConnectionException
+     * @throws RequestException
+     */
+    public function invoiceUrl(string $transactionId): ?string
+    {
+        $url = $this->api()
+            ->get('/transactions/'.rawurlencode($transactionId).'/invoice', ['disposition' => 'attachment'])
+            ->throw()
+            ->json('data.url');
+
+        return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
+    }
+
+    /**
+     * An authenticated client for Paddle's API in the configured environment.
+     */
+    public function api(): PendingRequest
+    {
+        return Http::baseUrl($this->apiUrl())
+            ->withToken($this->apiKey())
+            ->acceptJson()
+            ->timeout(10);
     }
 
     /**

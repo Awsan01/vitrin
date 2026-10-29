@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class BuyCreditsTest extends TestCase
@@ -66,15 +67,44 @@ class BuyCreditsTest extends TestCase
         $this->assertDatabaseCount('credit_purchases', 0);
     }
 
-    public function test_nothing_can_be_bought_until_paddle_is_set_up(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function requiredSettings(): array
     {
-        config(['services.paddle.webhook_secret' => null]);
+        return [
+            'client-side token' => ['services.paddle.client_token'],
+            'API key' => ['services.paddle.api_key'],
+            'webhook secret' => ['services.paddle.webhook_secret'],
+        ];
+    }
+
+    #[DataProvider('requiredSettings')]
+    public function test_nothing_can_be_bought_until_paddle_is_set_up(string $setting): void
+    {
+        config([$setting => null]);
 
         $this->actingAs(User::factory()->create())
             ->post(route('credits.purchases.store'), ['pack' => 'growth'])
             ->assertInertiaFlash('toast.type', 'error');
 
         $this->assertDatabaseCount('credit_purchases', 0);
+    }
+
+    public function test_the_credits_page_names_missing_settings_only_in_debug_mode(): void
+    {
+        config(['services.paddle.api_key' => null, 'services.paddle.webhook_secret' => null, 'app.debug' => true]);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get(route('credits.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('paddle', null)
+            ->where('packs.0.purchasable', false)
+            ->where('missingSettings', ['PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET']));
+
+        config(['app.debug' => false]);
+
+        $this->actingAs($user)->get(route('credits.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('missingSettings', null));
     }
 
     public function test_guests_and_unverified_users_cannot_buy(): void
@@ -106,7 +136,7 @@ class BuyCreditsTest extends TestCase
         $user->creditPurchases()->create(['pack' => 'growth', 'price_id' => 'pri_growth', 'credits' => 300, 'status' => PurchaseStatus::Pending]);
         $user->creditPurchases()->create([
             'pack' => 'starter', 'price_id' => 'pri_starter', 'credits' => 100, 'status' => PurchaseStatus::Completed,
-            'amount' => 900, 'currency' => 'USD', 'completed_at' => now(),
+            'paddle_transaction_id' => 'txn_01test', 'amount' => 900, 'currency' => 'USD', 'completed_at' => now(),
         ]);
 
         $this->actingAs($user)
@@ -121,7 +151,8 @@ class BuyCreditsTest extends TestCase
                 ->has('purchases', 1)
                 ->where('purchases.0.pack', 'Starter')
                 ->where('purchases.0.amount', '$9.00')
-                ->where('purchases.0.status_label', 'Paid'));
+                ->where('purchases.0.status_label', 'Paid')
+                ->where('purchases.0.invoice', true));
     }
 
     public function test_paddle_prices_are_fetched_once_and_cached(): void

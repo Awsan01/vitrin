@@ -42,6 +42,11 @@ class AppServiceProvider extends ServiceProvider
         // account can open.
         RateLimiter::for('checkouts', fn (Request $request) => Limit::perMinute(10)
             ->by($request->user()?->id ?: $request->ip()));
+
+        // Confirming a payment and fetching an invoice call Paddle's API.
+        // After paying, the Credits page checks about seven times a minute.
+        RateLimiter::for('payment-checks', fn (Request $request) => Limit::perMinute(30)
+            ->by($request->user()?->id ?: $request->ip()));
     }
 
     /**

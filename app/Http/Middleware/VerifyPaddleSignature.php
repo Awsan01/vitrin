@@ -36,7 +36,16 @@ class VerifyPaddleSignature
             (int) config('services.paddle.webhook_tolerance'),
         );
 
-        abort_unless($valid, 403);
+        if (! $valid) {
+            // Usually PADDLE_WEBHOOK_SECRET doesn't match the notification
+            // destination's (e.g. the sandbox secret on the live site), so
+            // every payment and refund is being refused.
+            Log::warning('Paddle webhook refused: invalid signature. Check PADDLE_WEBHOOK_SECRET (php artisan paddle:check).', [
+                'ip' => $request->ip(),
+            ]);
+
+            abort(403);
+        }
 
         return $next($request);
     }

@@ -57,16 +57,28 @@ trait InteractsWithPaddle
             'event_type' => 'transaction.completed',
             'occurred_at' => now()->toIso8601String(),
             'notification_id' => 'ntf_01test',
-            'data' => [
-                'id' => 'txn_01test',
-                'status' => 'completed',
-                'customer_id' => 'ctm_01test',
-                'currency_code' => 'USD',
-                'custom_data' => ['purchase_id' => $purchase->id],
-                'items' => [['price' => ['id' => $purchase->price_id], 'quantity' => 1]],
-                'details' => ['totals' => ['total' => '2400', 'grand_total' => '2400']],
-                ...$data,
-            ],
+            'data' => $this->paddleTransaction($purchase, $data),
+        ];
+    }
+
+    /**
+     * A completed transaction for the purchase, the way Paddle's API returns
+     * it and its webhooks carry it.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function paddleTransaction(CreditPurchase $purchase, array $data = []): array
+    {
+        return [
+            'id' => 'txn_01test',
+            'status' => 'completed',
+            'customer_id' => 'ctm_01test',
+            'currency_code' => 'USD',
+            'custom_data' => ['purchase_id' => $purchase->id],
+            'items' => [['price' => ['id' => $purchase->price_id], 'quantity' => 1]],
+            'details' => ['totals' => ['total' => '2400', 'grand_total' => '2400']],
+            ...$data,
         ];
     }
 

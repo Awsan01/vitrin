@@ -7,6 +7,9 @@ use App\Enums\PurchaseStatus;
 use App\Models\CreditPurchase;
 use App\Models\CreditTransaction;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -16,7 +19,9 @@ use Illuminate\Support\Facades\Log;
  * Flow: start() records a pending purchase and the browser opens Paddle's
  * checkout with its ID as custom data. Paddle then sends signed webhooks:
  * fulfil() adds the credits when the payment completes, and reverse() takes
- * them back after a refund or chargeback.
+ * them back after a refund or chargeback. Two backups ask Paddle's API
+ * directly, in case a webhook is slow or never arrives: confirm(), called by
+ * the browser right after paying, and reconcile(), run on a schedule.
  *
  * Nothing the browser sends decides how many credits are added: the pack and
  * price come from the purchase row, and the payment must be for that exact
@@ -25,7 +30,10 @@ use Illuminate\Support\Facades\Log;
  */
 class CreditPurchases
 {
-    public function __construct(protected CreditLedger $ledger) {}
+    /** How far back reconcile() looks for paid checkouts. */
+    protected const RECONCILE_HOURS = 48;
+
+    public function __construct(protected CreditLedger $ledger, protected Paddle $paddle) {}
 
     public function start(User $user, CreditPack $pack): CreditPurchase
     {
@@ -38,37 +46,38 @@ class CreditPurchases
     }
 
     /**
-     * Add the credits for a completed Paddle transaction.
+     * Add the credits for a completed Paddle transaction. Returns whether
+     * this call added them.
      *
-     * @param  array<string, mixed>  $transaction  The webhook's "data" object.
+     * @param  array<string, mixed>  $transaction  A transaction as Paddle sends it (a webhook's "data" object).
      */
-    public function fulfil(array $transaction): void
+    public function fulfil(array $transaction): bool
     {
         $transactionId = data_get($transaction, 'id');
         $purchaseId = data_get($transaction, 'custom_data.purchase_id');
 
         if (data_get($transaction, 'status') !== 'completed' || ! is_string($transactionId)) {
-            return;
+            return false;
         }
 
         if (! is_string($purchaseId)) {
             // Sold outside the app, e.g. an invoice made in the Paddle dashboard.
             Log::info('Paddle transaction without a Vitrin purchase', ['transaction' => $transactionId]);
 
-            return;
+            return false;
         }
 
-        DB::transaction(function () use ($transaction, $transactionId, $purchaseId) {
+        return DB::transaction(function () use ($transaction, $transactionId, $purchaseId) {
             $purchase = CreditPurchase::query()->whereKey($purchaseId)->lockForUpdate()->first();
 
             if ($purchase === null) {
                 Log::warning('Paddle transaction for an unknown purchase', ['transaction' => $transactionId, 'purchase' => $purchaseId]);
 
-                return;
+                return false;
             }
 
             if ($purchase->status !== PurchaseStatus::Pending) {
-                return;
+                return false;
             }
 
             $quantity = collect((array) data_get($transaction, 'items', []))
@@ -80,7 +89,7 @@ class CreditPurchases
                 // editable in the browser). Leave it for a person to check.
                 Log::warning('Paddle transaction does not match its purchase', ['transaction' => $transactionId, 'purchase' => $purchase->id]);
 
-                return;
+                return false;
             }
 
             $credits = $purchase->credits * $quantity;
@@ -103,7 +112,73 @@ class CreditPurchases
                 "Bought the {$this->packName($purchase)} pack",
                 reference: "paddle:{$transactionId}",
             );
+
+            return true;
         });
+    }
+
+    /**
+     * Check a payment the browser just reported and add the credits once
+     * Paddle has it as completed. Only the transaction ID comes from the
+     * browser; what it paid for is read from Paddle's API. The webhook does
+     * the same, so this only makes the credits appear sooner, and lets
+     * payments be tested on a computer Paddle's webhooks can't reach.
+     *
+     * @throws ConnectionException
+     * @throws RequestException
+     */
+    public function confirm(CreditPurchase $purchase, string $transactionId): void
+    {
+        if ($purchase->status !== PurchaseStatus::Pending) {
+            return;
+        }
+
+        $transaction = $this->paddle->transaction($transactionId);
+
+        // The ID could belong to another purchase, or another account's.
+        if ($transaction !== null && data_get($transaction, 'custom_data.purchase_id') === $purchase->id) {
+            $this->fulfil($transaction);
+        }
+    }
+
+    /**
+     * Add the credits for paid checkouts that are still pending, which means
+     * their webhook never arrived (the server was down, or the webhook
+     * secret is wrong) and the buyer closed the page before confirm() ran.
+     * Returns how many purchases it completed.
+     *
+     * @throws ConnectionException
+     * @throws RequestException
+     */
+    public function reconcile(): int
+    {
+        $oldest = CreditPurchase::query()
+            ->where('status', PurchaseStatus::Pending)
+            ->where('created_at', '>=', now()->subHours(self::RECONCILE_HOURS))
+            ->min('created_at');
+
+        if ($oldest === null) {
+            return 0;
+        }
+
+        $completed = 0;
+
+        // Paddle creates the transaction when the checkout opens, just after
+        // the purchase; the margin allows for clocks that disagree.
+        foreach ($this->paddle->completedTransactions(Date::parse($oldest)->subMinutes(10)) as $transaction) {
+            $purchaseId = data_get($transaction, 'custom_data.purchase_id');
+
+            $waiting = is_string($purchaseId) && CreditPurchase::query()
+                ->whereKey($purchaseId)
+                ->where('status', PurchaseStatus::Pending)
+                ->exists();
+
+            if ($waiting && $this->fulfil($transaction)) {
+                $completed++;
+            }
+        }
+
+        return $completed;
     }
 
     /**
